@@ -1,25 +1,123 @@
 ---
 title: "Reproducible Research: Peer Assessment 1"
+author: "Tyler Brown"
+date: "March 2, 2016"
 output: 
-  html_document:
-    keep_md: true
+  html_document: 
+    keep_md: yes
 ---
 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(xtable)
+library(ggplot2)
+```
+
+# Introduction
+
+It is now possible to collect a large amount of data about personal movement using activity monitoring devices such as a Fitbit, Nike Fuelband, or Jawbone Up. These type of devices are part of the "quantified self" movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. But these data remain under-utilized both because the raw data are hard to obtain and there is a lack of statistical methods and software for processing and interpreting the data.
+
+This assignment makes use of data from a personal activity monitoring device. This device collects data at 5 minute intervals through out the day. The data consists of two months of data from an anonymous individual collected during the months of October and November, 2012 and include the number of steps taken in 5 minute intervals each day.
+
+# Project Code
 
 ## Loading and preprocessing the data
 
+To read the data into an R environment, the read.csv() function is needed. The activity.csv file can be stored in the data variable using:
 
+```{r import}
+rawdata <- read.csv("activity.csv")
+```
+
+There are instances of missing data in the data set. They should be removed to facilitate future calculations. This can be accomplished by subsetting and using the complete.cases() function. Also the date variable will be formatted as a date object.
+
+```{r process}
+data <- rawdata[complete.cases(rawdata),]
+data$date <- as.Date(data$date, format = "%Y-%m-%d")
+```
 
 ## What is mean total number of steps taken per day?
 
+To calculate the total number of steps per day the following code is used.
+```{r mean}
+data2 <- group_by(data,date)
+summary <- summarize(data2,totalsteps=sum(steps))
+hist(summary$totalsteps, main = "Histogram of Total Daily Steps", xlab="Total Daily Steps")
+```
 
+A table of the total number of steps per day is displayed:
+
+```{r table, echo = FALSE, results = "asis"}
+summary2 <- summary
+summary2$date <- as.character(summary2$date)
+print(xtable(summary2),type="html")
+```
+
+The mean number of total steps per day is: `r mean(summary$totalsteps)`; the median number of steps per day is: `r median(summary$totalsteps)`.
 
 ## What is the average daily activity pattern?
 
+The following code calculates the mean number of steps observed throughout the time interval (the time of day). A plot is provided to show the average daily activity pattern. The red dot shows the maximum observed mean steps.
 
+```{r dailypattern}
+summary3 <- group_by(data, interval)
+summary3 <- summarize(summary3, meansteps=mean(steps))
+plot(x=summary3$interval,y=summary3$meansteps,type="l",main="Average Steps by time of Day",xlab="Time of Day (hhmm)",ylab="Mean Steps")
+points(x=summary3$interval[which.max(summary3$meansteps)],y=max(summary3$meansteps),pch=19,col="red")
+```
+
+The time of day with the maximum average number of steps is: `r sprintf("%04d",summary3$interval[which.max(summary3$meansteps)])` (hhmm), with a value of `r max(summary3$meansteps)` steps.
 
 ## Imputing missing values
 
+Since there are `r sum(is.na(rawdata$steps))` rows of missing data (where data is NA) in the raw data, it is desired to impute that data. The following code takes the calculation of the mean steps per time interval to fill in those missing values. "data3" is the new data set with the imputed values.
 
+```{r impute}
+navalues <- is.na(rawdata$steps)
+data3 <- rawdata
+for (i in 1:length(navalues)) {
+     if (navalues[i] == TRUE) {
+          data3$steps[i] <- summary3$meansteps[match(data3$interval[i],summary3$interval)]
+     }
+}
+```
+
+```{r echo=FALSE}
+#library(gdata)
+#write.fwf(cbind(rawdata,data3),file="test2.csv")
+```
+
+### Calculate summary statistics on full data
+
+```{r}
+summary5 <- group_by(data3,date)
+summary5 <- summarize(summary5,totalsteps=sum(steps))
+hist(summary5$totalsteps, main = "Histogram of Total Daily Steps", xlab="Total Daily Steps")
+```
+
+The mean number of total steps per day is: `r mean(summary5$totalsteps)`; the median number of steps per day is: `r median(summary5$totalsteps)`.
+
+This plot shows good agreement with the first histogram produced. Also, the mean and median values for the total daily steps agree with those first calculated prior imputing the missing values. This suggests that the imputing method is sound and the amount of missing values have little practical effect on the analysis.
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+Using the imputed data set of 'data3' we will see if there is a difference in activity pattern between weekdays and weekends. Fist some data manipulations need to be done in order to create a factor variable with the levels of 'weekend' or 'weekday'. Next, summary statistics are made to calculate the mean number of steps in each interval.
+
+```{r dayofweek}
+data4 <- data3
+data4$date <- as.Date(data4$date, format = "%Y-%m-%d")
+data4 <- mutate(data4,dayofweek=weekdays(date, abbreviate = TRUE))
+weekend <- c("Sat","Sun")
+data4 <- mutate(data4,weekend=dayofweek %in% weekend)
+data4 <- mutate(data4,weekportion=factor(weekend, levels = c(TRUE,FALSE), labels = c("weekend","weekday")))
+data4 <- select(data4,-weekend)
+data4 <- select(data4,-dayofweek)
+
+summary6 <- group_by(data4,weekportion,interval)
+summary6 <- summarize(summary6,numsteps=mean(steps))
+
+qplot(x=interval,y=numsteps,data = summary6, geom = "line", facets = weekportion~.,ylab="Number of Steps",xlab="Interval")
+```
+
+The results of the plot show that overall the activity graphs are similar. However, some features may be interesting to a researcher. First, on weekdays between 0500 and 0900 there is moderate activity, while there is little activity at these times on the weekends. This may be going to work. Secondly, between 1000 and 2000 on weekends there is a consistent moderate level of activity that it not seen on the weekdays.
